@@ -1,56 +1,76 @@
-import React, { useState } from 'react';
-import { saveAs } from 'file-saver';
-import Sidebar from './Sidebar'; // Sidebar component
-import Header from './Header'; // Header component
-import Editor from '@monaco-editor/react'; // Monaco editor
-import Navbar from './Navbar'; // Navbar component
+import React, { useState } from "react";
+import { saveAs } from "file-saver";
+import Sidebar from "./Sidebar";
+import Header from "./Header";
+import CodeMirror from "@uiw/react-codemirror";
+import { python } from "@codemirror/lang-python";
+import { ThemeMaped } from "../constants";
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+
 
 const MainWindow = () => {
   const [files, setFiles] = useState([]);
   const [currentFile, setCurrentFile] = useState(null);
-  const [savedFileName, setSavedFileName] = useState('');
-  const [savedFileContent, setSavedFileContent] = useState('');
+  const [savedFileName, setSavedFileName] = useState("");
+  const [savedFileContent, setSavedFileContent] = useState("");
+  const [theme, setTheme] = useState(ThemeMaped.oneDark);
+  const [fileObject, setFileObject] = useState("")
 
-  // Handle file input (file selection from the system)
-  const handleFileInput = (e) => {
-    const file = e.target.files[0];
-    if (file && file.type === 'text/x-python') {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const content = reader.result;
-        const newFile = { name: file.name, content };
-        setFiles((prevFiles) => [...prevFiles, newFile]); // Add file to the list
-        setCurrentFile(newFile); // Set the current file to the newly opened one
-        setSavedFileName(file.name);
-        setSavedFileContent(content); // Set the content of the opened file
-      };
-      reader.readAsText(file);
-    } else {
-      alert('Please select a Python file.');
-    }
+  const [preferences, setPreferences] = useState({
+    pythonPath1: "",
+    pythonPath2: "",
+    fontSize: 14,
+  });
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [terminalOutput, setTerminalOutput] = useState("Output will appear here...");
+
+  const toggleTerminal = () => {
+    setIsTerminalOpen((prev) => !prev);
   };
 
-  // Handle file selection from the sidebar
+  const handleFileInput = (response) => {
+      
+      const newFile = { name: response.fileName, content:response.content, filePath: response.filePath };
+      setFiles((prevFiles) => [...prevFiles, newFile]);
+      setCurrentFile(newFile);
+      setSavedFileName(response.fileName);
+      setSavedFileContent(response.content);
+      setFileObject(response.filePath)
+
+  };
+
   const handleFileSelect = (file) => {
     setCurrentFile(file);
     setSavedFileName(file.name);
     setSavedFileContent(file.content);
   };
 
-  // Handle creating a new file
   const handleNewFile = () => {
     setCurrentFile(null);
-    setSavedFileName('Untitled File');
-    setSavedFileContent('');
+    setSavedFileName("Untitled File");
+    setSavedFileContent("");
+    
   };
 
-  // Handle saving the file (either updating existing or creating new)
-  const handleSave = () => {
+  const handleSave = async () => {
     if (savedFileName) {
+      alert(savedFileName)
       setSavedFileContent(currentFile.content);
-      alert(`File "${savedFileName}" saved successfully!`);
+      alert(currentFile.filePath)
+      const response = await window.myAPI?.saveFile({
+        file: currentFile.filePath,
+        content: currentFile.content
+      });
+      
+      if (response.success) {
+        alert('File saved successfully');
+      } else {
+        alert('Failed to save file: ' + response.error);
+      }
+
     } else {
-      const name = prompt('Enter a new file name (e.g., example.py):', 'new_file.py');
+      const name = await window.myAPI.showPrompt();
       if (name) {
         setSavedFileName(name);
         setSavedFileContent(currentFile.content);
@@ -59,9 +79,8 @@ const MainWindow = () => {
     }
   };
 
-  // Handle Save As (allows renaming the file)
   const handleSaveAs = () => {
-    const name = prompt('Enter a new file name (e.g., example.py):', savedFileName);
+    const name = prompt("Enter a new file name (e.g., example.py):", savedFileName);
     if (name) {
       setSavedFileName(name);
       setSavedFileContent(currentFile.content);
@@ -69,73 +88,106 @@ const MainWindow = () => {
     }
   };
 
-  // Handle downloading the file
   const handleDownload = () => {
     if (savedFileName) {
-      const blob = new Blob([savedFileContent], { type: 'text/plain;charset=utf-8' });
+      const blob = new Blob([savedFileContent], { type: "text/plain;charset=utf-8" });
       saveAs(blob, savedFileName);
       alert(`File "${savedFileName}" downloaded successfully!`);
     } else {
-      alert('No file to download.');
+      alert("No file to download.");
     }
   };
 
-  // Handle closing the current file
   const handleClose = () => {
     setCurrentFile(null);
-    setSavedFileName('');
-    setSavedFileContent('');
+    setSavedFileName("");
+    setSavedFileContent("");
+  };
+
+  const handleThemeChange = (newTheme) => {
+    setTheme(newTheme);
+  };
+
+  const handlePreferencesChange = (prep) => {
+    setPreferences(prep);
   };
 
   return (
-    <div className="flex h-screen bg-gray-200 flex-col">
-      {/* Navbar at the very top */}
-      <Navbar 
-        onNewFile={handleNewFile} 
-        onOpenFile={handleFileInput} 
-        onSave={handleSave} 
-        onSaveAs={handleSaveAs} 
-      />
-
-      {/* Main content layout */}
-      <div className="flex flex-1">
-        {/* Sidebar with file list and file input */}
-        <Sidebar
-          files={files}
-          onFileSelect={handleFileSelect}
-          onFileInput={handleFileInput} // Ensure this is also passed to Sidebar for file input
-        />
-
-        {/* Main content area */}
-        <div className="flex-1 bg-gray-100 relative flex flex-col">
-          {/* Header displaying file name and actions */}
-          <Header
-            fileName={savedFileName || 'Untitled File'}
+    <div className="flex h-screen flex-col">
+      <div className="flex flex-1 pt-[2.3rem]">
+        <div className="fixed top-[0] left-0 bottom-0 w-[16rem] bg-gray-300 z-[9999]">
+          <Sidebar
+            files={files}
+            onFileSelect={handleFileSelect}
+            onFileInput={handleFileInput}
+            onNewFile={handleNewFile}
+            onOpenFile={handleFileInput}
             onSave={handleSave}
-            onDownload={handleDownload}
-            onClose={handleClose}
+            onSaveAs={handleSaveAs}
+            onPreferencesChange={handlePreferencesChange}
+            currentFileName={currentFile?.name}
           />
-
-          {/* Editor for displaying file content */}
-          <div className="flex-1 overflow-hidden">
-            {currentFile ? (
-              <Editor
-                height="100%"
-                theme="vs-dark"
-                language="python"
-                value={savedFileContent}  // Use savedFileContent to control the editor
-                onChange={(value) => setCurrentFile((prevFile) => ({ ...prevFile, content: value }))}
-              />
-            ) : (
-              <Editor
-                height="100%"
-                theme="vs-dark"
-                language="python"
-                value={savedFileContent}  // Show empty content if no file selected
-                onChange={(value) => setCurrentFile({ content: value })}
-              />
-            )}
+        </div>
+        <div className="ml-[16rem] flex-1 bg-gray-100 relative flex flex-col">
+          <div className="fixed top-[0] left-[16rem] right-0 z-10 bg-white shadow">
+            <Header
+              fileName={savedFileName || "Untitled File"}
+              onSave={handleSave}
+              onDownload={handleDownload}
+              onClose={handleClose}
+            />
           </div>
+          <div className="mt-8 h-full overflow-auto flex flex-col">
+            <div className="flex-1">
+              {currentFile ? (
+                <CodeMirror
+                  value={currentFile.content}
+                  height="100%"
+                  extensions={[python()]}
+                  theme={theme}
+                  onChange={(value) =>
+                    setCurrentFile((prevFile) => ({ ...prevFile, content: value }))
+                  }
+                  className="h-full"
+                  style={{
+                    fontSize: `${preferences.fontSize}px`,
+                  }}
+                />
+              ) : (
+                <CodeMirror
+                  value={savedFileContent}
+                  height="100%"
+                  extensions={[python()]}
+                  theme={theme}
+                  onChange={(value) => setCurrentFile({ content: value })}
+                  className="h-full"
+                  style={{
+                    fontSize: `${preferences.fontSize}px`,
+                  }}
+                />
+              )}
+            </div>
+            {/* Terminal Section */}
+            <div
+              className={`transition-all duration-300 ${
+                isTerminalOpen ? "h-[40%]" : "h-0"
+              } w-full bg-black text-white overflow-hidden fixed left-[16rem] bottom-0 right-0
+               border-t-[1px] border-gray-400
+              `}
+            >
+              <div className="p-2 text-sm">
+                <pre>{terminalOutput}</pre>
+              </div>
+            </div>
+          </div>
+          {/* Toggle Terminal Button */}
+          <button
+            className="fixed bottom-2 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow"
+            onClick={toggleTerminal}
+            
+          >
+            {isTerminalOpen ? <KeyboardArrowDownIcon/> : <KeyboardArrowUpIcon/>}
+          </button>
         </div>
       </div>
     </div>
