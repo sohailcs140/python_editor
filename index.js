@@ -31,15 +31,15 @@ async function createWindow() {
 // SAVE FILE
 ipcMain.handle("save-file", async (event, { file, content }) => {
   try {
-    if (!file || !content) {
-      return { success: false, error: "File or content is missing." };
-    }
-
+   
     let filePath = file;
-
+    
     if (!filePath) {
       const result = await dialog.showSaveDialog({
-        defaultPath: file.name,
+        defaultPath: "Untitled.py", 
+        filters: [
+          { name: "Python Files", extensions: ["py"] },
+        ],
       });
 
       if (!result.filePath) {
@@ -48,14 +48,24 @@ ipcMain.handle("save-file", async (event, { file, content }) => {
       filePath = result.filePath;
     }
 
-    // Save the content to the file path
-    fs.writeFileSync(filePath, content, "utf-8");
-    return { success: true };
+    if (!path.extname(filePath)) {
+      filePath += ".py";
+    }
+
+
+    fs.writeFileSync(filePath, content || "", "utf-8");
+    return { 
+      success: true, 
+      filePath, 
+      fileName: filePath.split("/").pop(),
+      content
+    };
   } catch (error) {
     console.error("Error saving the file:", error);
     return { success: false, error: error.message };
   }
 });
+
 
 
 // OPEN NEW FILE
@@ -91,15 +101,43 @@ ipcMain.handle("open-file", async () => {
 
 
 // READ FILE
-
-ipcMain.handle("read-file", async()=>{
+ipcMain.handle("read-file", async(event, filePath)=>{
   try{
     const content = fs.readFileSync(filePath, "utf-8");
-    
+    return {
+      success: true,
+      content,
+    };
   }catch(error){
-
+    return { success: false, error: error.message };
   }
 });
+
+
+// confirm dialog
+ipcMain.handle("show-confirm-dialog", async (event, message) => {
+  const result = await dialog.showMessageBox({
+    type: "question",
+    buttons: ["Yes", "No"], 
+    defaultId: 1, 
+    title: "Confirmation",
+    message: message || "Are you sure you want to proceed?",
+  });
+
+  return result.response === 0;
+});
+
+// python paths dialog
+ipcMain.handle('open-python-dialog', async (event,title) => {
+  const result = await dialog.showOpenDialog({
+    title: title,
+    properties: ['openFile'],
+  });
+  return result.filePaths[0]; 
+});
+
+
+
 
 app.whenReady().then(createWindow);
 
